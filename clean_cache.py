@@ -73,11 +73,10 @@ def main():
     
     # Set environment variables to use the specified cache directory
     os.environ["HF_HOME"] = cache_dir
-    os.environ["TRANSFORMERS_CACHE"] = os.path.join(cache_dir, "transformers")
     os.environ["HF_DATASETS_CACHE"] = os.path.join(cache_dir, "datasets")
     
     # Create subdirectories
-    os.makedirs(os.environ["TRANSFORMERS_CACHE"], exist_ok=True)
+    os.makedirs(os.path.join(cache_dir, "transformers"), exist_ok=True)
     os.makedirs(os.environ["HF_DATASETS_CACHE"], exist_ok=True)
     
     # Check cache size
@@ -95,7 +94,6 @@ def main():
     
     print(f"\nTo use this cache directory in your code, add:")
     print("os.environ['HF_HOME'] = " + repr(cache_dir))
-    print("os.environ['TRANSFORMERS_CACHE'] = " + repr(os.path.join(cache_dir, "transformers")))
     print("os.environ['HF_DATASETS_CACHE'] = " + repr(os.path.join(cache_dir, "datasets")))
 
 if __name__ == "__main__":

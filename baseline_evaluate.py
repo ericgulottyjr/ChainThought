@@ -156,7 +156,7 @@ def evaluate_gsm8k(model, tokenizer, dataset, num_samples, max_new_tokens, outpu
     
     # Save summary to file
     summary = {
-        "model": "deepseek-7b-base",
+        "model": args.model_name_or_path,
         "dataset": "gsm8k",
         "samples_evaluated": total,
         "correct": correct,
