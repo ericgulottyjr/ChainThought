@@ -68,5 +68,14 @@ Thumbs.db
 # Tensorboard
 events.out.tfevents*
 
+# Hugging Face cache
+.hf_cache/
+.cache/
+.transformers_cache/
+.huggingface/
+
+# Offload folder
+offload_folder/
+
 # Keep specific files even if they match patterns above
 !requirements.txt 
