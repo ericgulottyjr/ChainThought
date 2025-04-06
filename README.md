@@ -17,9 +17,36 @@ git clone https://github.com/ericgulottyjr/ChainThought.git
 cd ChainThought
 ```
 
-2. Install dependencies:
+2. Create and activate a virtual environment:
+```bash
+# Create a virtual environment named .venv
+python -m venv .venv
+
+# Activate the virtual environment
+# On Linux/Mac
+source .venv/bin/activate
+# On Windows
+# .venv\Scripts\activate
+
+# Upgrade pip
+pip install --upgrade pip
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
+```
+
+4. Set up Hugging Face cache (recommended):
+```bash
+# Set Hugging Face cache to use project directory
+export HF_HOME="$(pwd)/.hf_cache"
+export TRANSFORMERS_CACHE="$(pwd)/.hf_cache/transformers"
+export HF_DATASETS_CACHE="$(pwd)/.hf_cache/datasets"
+
+# Create cache directories
+mkdir -p $HF_HOME/transformers
+mkdir -p $HF_HOME/datasets
 ```
 
 ## Fine-tuning
@@ -116,7 +143,54 @@ Additional arguments:
 
 ## Running on Compute Cluster
 
-This project includes scripts for running on the shared computing cluster. The following instructions will help you run the code efficiently on the cluster.
+This project includes scripts for running on the shared computing cluster (SCC). The following instructions will help you run the code efficiently on the cluster.
+
+### Interactive Session Setup
+
+For interactive development on the SCC, follow these steps:
+
+1. Connect to the SCC via SSH
+2. Load Miniconda to your environment:
+   ```bash
+   module load miniconda
+   ```
+3. Navigate to your project directory:
+   ```bash
+   cd /path/to/ChainThought
+   ```
+4. Create and activate a virtual environment (if it doesn't exist):
+   ```bash
+   # Create a new virtual environment named .venv
+   python -m venv .venv
+   
+   # Activate the virtual environment
+   source .venv/bin/activate
+   
+   # Upgrade pip
+   pip install --upgrade pip
+   
+   # Install requirements
+   pip install -r requirements.txt
+   ```
+5. Set up Hugging Face cache to use project directory:
+   ```bash
+   # This prevents hitting home directory storage limits
+   export HF_HOME="$(pwd)/.hf_cache"
+   export TRANSFORMERS_CACHE="$(pwd)/.hf_cache/transformers"
+   export HF_DATASETS_CACHE="$(pwd)/.hf_cache/datasets"
+   
+   # Create cache directories
+   mkdir -p $HF_HOME/transformers
+   mkdir -p $HF_HOME/datasets
+   ```
+6. For a quick solution to run commands with the correct cache settings:
+   ```bash
+   # Make the helper script executable
+   chmod +x run_with_cache.sh
+   
+   # Run your command with proper cache settings
+   ./run_with_cache.sh
+   ```
 
 ### Checking the Environment
 
@@ -217,7 +291,7 @@ See the shared computing cluster cheat sheet for more details on available comma
 
 ### Managing Hugging Face Cache
 
-When running on the compute cluster, the Hugging Face cache directory is set to a local folder in your project directory (`.hf_cache`). This prevents issues with home directory storage limits.
+When running on the compute cluster, the Hugging Face cache directory is set to a local folder in your project directory (`.hf_cache`). This prevents issues with home directory storage limits (typically 10GB for the home directory).
 
 To check or clean the cache:
 
@@ -241,3 +315,13 @@ If you encounter any model loading errors related to cache or storage issues, yo
 3. Run your command again
 
 The job submission scripts already include these environment settings.
+
+### Quick Run in Interactive Sessions
+
+For interactive development sessions, use our helper script:
+
+```bash
+./run_with_cache.sh
+```
+
+This script sets up the correct Hugging Face cache directory and runs the baseline evaluation. You can modify this script for different commands.
