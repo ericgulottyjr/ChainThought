@@ -8,7 +8,6 @@ echo "Working directory: $WORKDIR"
 
 # Set Hugging Face cache to be in the project directory
 export HF_HOME="$WORKDIR/.hf_cache"
-export TRANSFORMERS_CACHE="$WORKDIR/.hf_cache/transformers"
 export HF_DATASETS_CACHE="$WORKDIR/.hf_cache/datasets"
 
 # Create cache directories
