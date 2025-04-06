@@ -25,12 +25,10 @@ mkdir -p $WORKDIR/offload_folder
 # Setup environment
 python -c "from cluster_config import setup_environment; setup_environment()"
 
-# Run the evaluation with improved parameters
+# Run the simplified evaluation
 python baseline_evaluate.py \
   --num_samples 10 \
-  --temperature 0.1 \
-  --precision bf16 \
-  --prompt_template gsm8k_format \
+  --max_new_tokens 100 \
   --output_dir $WORKDIR/baseline_results
 
 echo "Job completed at $(date)" 
