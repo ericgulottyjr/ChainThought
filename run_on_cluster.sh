@@ -35,6 +35,16 @@ echo "=== Setting up environment ==="
 export OMP_NUM_THREADS=8  # Set number of threads
 export PYTHONPATH="$(pwd):$PYTHONPATH"
 
+# Explicitly set Hugging Face cache to be in the project directory
+export HF_HOME="$(pwd)/.hf_cache"
+export TRANSFORMERS_CACHE="$(pwd)/.hf_cache/transformers"
+export HF_DATASETS_CACHE="$(pwd)/.hf_cache/datasets"
+
+# Create cache directories
+mkdir -p $HF_HOME/transformers
+mkdir -p $HF_HOME/datasets
+echo "Hugging Face cache set to: $HF_HOME"
+
 # Create and activate a virtual environment if needed
 if [ ! -d ".venv" ]; then
     echo "Creating new virtual environment..."
@@ -50,6 +60,10 @@ pip install -r requirements.txt
 # Clean offload folder
 echo "=== Cleaning offload folder ==="
 python clean_offload.py
+
+# Initialize environment setup from the Python module
+echo "=== Setting up Python environment ==="
+python -c "from cluster_config import setup_environment; setup_environment()"
 
 # Check environment
 echo "=== Checking environment ==="

@@ -69,6 +69,17 @@ def setup_environment():
     if "MKL_NUM_THREADS" not in os.environ:
         os.environ["MKL_NUM_THREADS"] = os.environ.get("OMP_NUM_THREADS", "8")
     
+    # Set Hugging Face cache directory in the project directory
+    current_dir = os.getcwd()
+    hf_cache_dir = os.path.join(current_dir, ".hf_cache")
+    os.makedirs(hf_cache_dir, exist_ok=True)
+    
+    os.environ["HF_HOME"] = hf_cache_dir
+    os.environ["TRANSFORMERS_CACHE"] = os.path.join(hf_cache_dir, "transformers")
+    os.environ["HF_DATASETS_CACHE"] = os.path.join(hf_cache_dir, "datasets")
+    
+    print(f"Hugging Face cache directory set to: {hf_cache_dir}")
+    
     # Print current settings
     print(f"Thread settings: OMP_NUM_THREADS={os.environ.get('OMP_NUM_THREADS')}, "
           f"MKL_NUM_THREADS={os.environ.get('MKL_NUM_THREADS')}")

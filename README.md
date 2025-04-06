@@ -214,3 +214,30 @@ The job scripts leverage the following cluster commands:
 - `-l gpu=N`: Request N GPUs
 
 See the shared computing cluster cheat sheet for more details on available commands.
+
+### Managing Hugging Face Cache
+
+When running on the compute cluster, the Hugging Face cache directory is set to a local folder in your project directory (`.hf_cache`). This prevents issues with home directory storage limits.
+
+To check or clean the cache:
+
+```bash
+# Check the current cache size
+python clean_cache.py
+
+# Clean the cache if it gets too large
+python clean_cache.py --clean
+```
+
+If you encounter any model loading errors related to cache or storage issues, you can try:
+
+1. Clean the cache using the script above
+2. Explicitly set the cache directory in your environment:
+   ```bash
+   export HF_HOME="$(pwd)/.hf_cache"
+   export TRANSFORMERS_CACHE="$(pwd)/.hf_cache/transformers" 
+   export HF_DATASETS_CACHE="$(pwd)/.hf_cache/datasets"
+   ```
+3. Run your command again
+
+The job submission scripts already include these environment settings.
