@@ -11,72 +11,68 @@ from datasets import load_dataset
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    BitsAndBytesConfig,
-    StoppingCriteria, 
+    StoppingCriteria,
     StoppingCriteriaList,
     GenerationConfig
 )
 from tqdm import tqdm
-import platform
 
-# Custom stopping criteria to detect repetition loops
-class RepetitionDetectionCriteria(StoppingCriteria):
-    def __init__(self, tokenizer, window_size=20, threshold=0.8):
+# Custom stopping criteria for math problems - adapted to detect EOT or final answer
+class MathStoppingCriteria(StoppingCriteria):
+    def __init__(self, tokenizer, stop_tokens=None):
         self.tokenizer = tokenizer
-        self.window_size = window_size
-        self.threshold = threshold
+        # Default stop tokens include "therefore", "thus", "the answer is", "boxed"
+        self.stop_tokens = stop_tokens or ["therefore", "thus", "the answer is", "boxed", "####"]
         
     def __call__(self, input_ids, scores, **kwargs):
-        # If we don't have enough tokens yet, continue
-        if input_ids.shape[1] < self.window_size * 2:
-            return False
-            
-        # Get the last n tokens
-        last_tokens = input_ids[0, -self.window_size:].tolist()
-        # Get the tokens before those
-        previous_tokens = input_ids[0, -2*self.window_size:-self.window_size].tolist()
+        # Get the generated text so far
+        generated_text = self.tokenizer.decode(input_ids[0])
         
-        # Calculate similarity (simple repeated token count)
-        repeated = sum(1 for a, b in zip(last_tokens, previous_tokens) if a == b)
-        similarity = repeated / self.window_size
-        
-        # If similarity is too high, stop generation
-        return similarity > self.threshold
+        # Check if any stop token is in the last portion of text
+        last_chunk = generated_text[-100:].lower()
+        for stop_token in self.stop_tokens:
+            if stop_token in last_chunk:
+                # Allow a few more tokens to complete the answer
+                return False
+                
+        # Also check for repetition patterns
+        if len(input_ids[0]) > 50:
+            last_tokens = input_ids[0, -20:].tolist()
+            prev_tokens = input_ids[0, -40:-20].tolist()
+            similarity = sum(1 for a, b in zip(last_tokens, prev_tokens) if a == b) / 20
+            if similarity > 0.8:
+                return True
+                
+        return False
         
     def __repr__(self):
-        return f"RepetitionDetectionCriteria(window_size={self.window_size}, threshold={self.threshold})"
+        return f"MathStoppingCriteria(stop_tokens={self.stop_tokens})"
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Evaluate baseline Deepseek-7B on GSM8K")
+    parser = argparse.ArgumentParser(description="Evaluate LLM on GSM8K with improved settings")
     parser.add_argument(
         "--model_name_or_path",
         type=str,
         default="deepseek-ai/deepseek-llm-7b-base",
-        help="Path to the base model",
+        help="Path to the base model"
     )
     parser.add_argument(
         "--num_samples",
         type=int,
-        default=100,
-        help="Number of samples to evaluate",
+        default=10,  # Reduced default for testing
+        help="Number of samples to evaluate"
     )
     parser.add_argument(
         "--max_new_tokens",
         type=int,
-        default=512,
-        help="Maximum number of new tokens to generate",
+        default=1024,  # Increased for more complete reasoning
+        help="Maximum number of new tokens to generate"
     )
     parser.add_argument(
         "--output_dir",
         type=str,
         default="./baseline_results",
-        help="Directory to save results",
-    )
-    parser.add_argument(
-        "--offload_folder", 
-        type=str, 
-        default="./offload_folder",
-        help="Folder for offloading model weights"
+        help="Directory to save results"
     )
     parser.add_argument(
         "--seed", 
@@ -85,80 +81,153 @@ def parse_args():
         help="Random seed"
     )
     parser.add_argument(
-        "--use_step_by_step",
-        action="store_true",
-        help="Include step-by-step instruction in the prompt"
+        "--temperature",
+        type=float,
+        default=0.1,  # Lower temperature for more focused generation
+        help="Temperature for generation"
+    )
+    parser.add_argument(
+        "--precision",
+        type=str,
+        choices=["bf16", "fp16", "fp32", "int8", "int4"],
+        default="bf16",
+        help="Precision for model loading"
+    )
+    parser.add_argument(
+        "--prompt_template",
+        type=str,
+        choices=["basic", "detailed", "cot", "gsm8k_format"],
+        default="gsm8k_format",
+        help="Prompt template to use"
     )
     return parser.parse_args()
 
-def format_prompt(example, use_step_by_step=True):
-    """Format the GSM8K problem into a prompt for the model."""
-    if use_step_by_step:
-        return f"""Below is a grade school math problem. Solve it step-by-step.
-
-Problem: {example["question"]}
-
-Solution:"""
-    else:
+def format_prompt(example, prompt_template="gsm8k_format"):
+    """Format the GSM8K problem using different prompting strategies."""
+    question = example["question"].strip()
+    
+    if prompt_template == "basic":
         return f"""Below is a grade school math problem.
 
-Problem: {example["question"]}
+Problem: {question}
+
+Solution:"""
+    
+    elif prompt_template == "detailed":
+        return f"""Below is a grade school math problem. Solve it step-by-step, explaining each calculation. After solving, clearly indicate your final answer.
+
+Problem: {question}
+
+Solution:"""
+    
+    elif prompt_template == "cot":
+        return f"""Below is a grade school math problem. Let's think through it step-by-step.
+
+Problem: {question}
+
+Solution: Let's solve this step-by-step.
+"""
+    
+    elif prompt_template == "gsm8k_format":
+        # This format more closely matches GSM8K dataset format and includes double-checking
+        return f"""Below is a grade school math problem. 
+
+Problem: {question}
+
+Solve the problem carefully. Show all your work step-by-step. Put your final answer on the last line with a double angle bracket notation.
+
+Solution:"""
+    
+    else:
+        # Default fallback
+        return f"""Below is a grade school math problem.
+
+Problem: {question}
 
 Solution:"""
 
 def extract_answer(text):
-    """Extract the numerical answer from the model's output."""
+    """Extract the numerical answer from the model's output with improved pattern matching."""
     # Remove commas from numbers
     text = text.replace(",", "")
     
-    # Try to find answers with dollar signs
-    dollar_pattern = r"\$?(\d+(?:\.\d+)?)"
-    dollar_matches = re.findall(dollar_pattern, text)
+    # First try to find answers formatted with GSM8K-style double brackets: <<2+2=4>> or boxed notation
+    gsm8k_pattern = r'<<.*?=\s*(\d+(?:\.\d+)?)\s*>>|\\\boxed{(\d+(?:\.\d+)?)}'
+    gsm8k_matches = re.findall(gsm8k_pattern, text)
+    if gsm8k_matches:
+        for match in gsm8k_matches:
+            # Take the first non-empty group
+            for group in match:
+                if group:
+                    return float(group)
     
-    # Look for "the answer is X" pattern
-    answer_pattern = r"(?:the\s+answer\s+is\s+|equals\s+|=\s*)(\d+(?:\.\d+)?)"
+    # Look for explicit "The answer is X" pattern (strengthened)
+    answer_pattern = r"(?:the\s+answer\s+is\s+|final\s+answer\s+is\s+|therefore\s+|thus\s+|hence\s+)(?:\$?|\\\$)?\s*(\d+(?:\.\d+)?)"
     answer_matches = re.findall(answer_pattern, text.lower())
-    
-    # Try to find the last number in the text
-    last_number_pattern = r"(\d+(?:\.\d+)?)"
-    number_matches = re.findall(last_number_pattern, text)
-    
-    # Priority: "the answer is" pattern > dollar sign > last number
     if answer_matches:
         return float(answer_matches[-1])
-    elif dollar_matches:
-        return float(dollar_matches[-1])
-    elif number_matches:
+    
+    # Look for answers after a hash/number sign
+    hash_pattern = r"#+\s*(\d+(?:\.\d+)?)"
+    hash_matches = re.findall(hash_pattern, text)
+    if hash_matches:
+        return float(hash_matches[-1])
+        
+    # Try to find the last number in the text that appears after "=" or "is"
+    eq_pattern = r"=\s*(\d+(?:\.\d+)?)\s*$|is\s+(\d+(?:\.\d+)?)\s*$"
+    eq_matches = re.findall(eq_pattern, text.lower())
+    if eq_matches:
+        for match in eq_matches:
+            for group in match:
+                if group:
+                    return float(group)
+    
+    # As a last resort, try to find the last number in the text
+    number_pattern = r"(\d+(?:\.\d+)?)"
+    number_matches = re.findall(number_pattern, text)
+    if number_matches:
         return float(number_matches[-1])
     
     return None
 
-def evaluate_gsm8k(model, tokenizer, dataset, num_samples, max_new_tokens, output_dir, use_step_by_step=True):
-    """Evaluate the model on GSM8K dataset."""
+def evaluate_gsm8k(model, tokenizer, dataset, args):
+    """Evaluate the model on GSM8K dataset with improved generation settings."""
     correct = 0
-    total = min(num_samples, len(dataset))
+    total = min(args.num_samples, len(dataset))
     results = []
     
     # Set device
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
     
-    # Create repetition detection criteria
-    repetition_criteria = RepetitionDetectionCriteria(tokenizer)
+    # Initialize stopping criteria
+    stopping_criteria = MathStoppingCriteria(tokenizer)
+    
+    # Prepare generation config
+    gen_config = GenerationConfig(
+        max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature,
+        top_p=0.95,
+        top_k=50,
+        repetition_penalty=1.2,
+        do_sample=args.temperature > 0.05,  # Turn off sampling if temperature is very low
+        pad_token_id=tokenizer.eos_token_id,
+    )
     
     for i in tqdm(range(total), desc="Evaluating"):
         example = dataset[i]
-        prompt = format_prompt(example, use_step_by_step)
+        prompt = format_prompt(example, args.prompt_template)
         
         inputs = tokenizer(prompt, return_tensors="pt").to(device)
         
-        # Generate output using model's own generation config with minimal overrides
+        # Generate output with better parameters
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=max_new_tokens,
-                repetition_penalty=1.1,  # Light repetition penalty
-                stopping_criteria=StoppingCriteriaList([repetition_criteria])
+                generation_config=gen_config,
+                stopping_criteria=StoppingCriteriaList([stopping_criteria]),
+                # Allow longer sequences and avoid cutting off mid-reasoning
+                min_new_tokens=100,
             )
         
         # Extract output text
@@ -192,30 +261,33 @@ def evaluate_gsm8k(model, tokenizer, dataset, num_samples, max_new_tokens, outpu
         results.append(result)
         
         # Print example
-        print(f"Example {i + 1}:")
+        print(f"\nExample {i + 1}:")
         print(f"Question: {example['question']}")
-        print(f"Generated answer: {predicted_answer}")
+        print(f"Model answer: {predicted_answer}")
         print(f"Ground truth: {ground_truth}")
         print(f"Correct: {is_correct}")
         print("-" * 50)
     
     accuracy = correct / total * 100
-    print(f"Baseline Accuracy: {accuracy:.2f}% ({correct}/{total})")
+    print(f"\nBaseline Accuracy: {accuracy:.2f}% ({correct}/{total})")
     
     # Save detailed results to file
-    os.makedirs(output_dir, exist_ok=True)
-    with open(os.path.join(output_dir, "baseline_results.json"), "w") as f:
+    os.makedirs(args.output_dir, exist_ok=True)
+    with open(os.path.join(args.output_dir, "baseline_results.json"), "w") as f:
         json.dump(results, f, indent=2)
     
     # Save summary to file
     summary = {
-        "model": "deepseek-7b-base",
+        "model": args.model_name_or_path,
         "dataset": "gsm8k",
         "samples_evaluated": total,
         "correct": correct,
         "accuracy": accuracy,
+        "temperature": args.temperature,
+        "prompt_template": args.prompt_template,
+        "precision": args.precision
     }
-    with open(os.path.join(output_dir, "baseline_summary.json"), "w") as f:
+    with open(os.path.join(args.output_dir, "baseline_summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
     
     return accuracy
@@ -227,54 +299,49 @@ def main():
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     
-    # Create offload folder if it doesn't exist
-    os.makedirs(args.offload_folder, exist_ok=True)
-    
-    # Check if we're on Apple Silicon
-    is_mac_arm = platform.system() == "Darwin" and platform.machine() == "arm64"
-    
     # Load tokenizer first
     print(f"Loading tokenizer: {args.model_name_or_path}")
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_name_or_path,
         trust_remote_code=True,
-        use_fast=True
+        use_fast=True,
+        padding_side="left"  # This helps with better batch processing
     )
     
-    # Configure quantization based on platform
-    if is_mac_arm:
-        print("Detected Apple Silicon Mac. Using float16 precision instead of 4-bit quantization.")
-        model = AutoModelForCausalLM.from_pretrained(
-            args.model_name_or_path,
-            torch_dtype=torch.float16,
-            device_map="auto",
-            trust_remote_code=True,
-            offload_folder=args.offload_folder,
-            offload_state_dict=True,  # Explicitly enable offloading
-        )
-    else:
-        # Configure quantization to save memory
-        bnb_config = BitsAndBytesConfig(
+    # Set up proper padding token
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    # Configure model loading based on precision
+    print(f"Loading model with {args.precision} precision")
+    model_kwargs = {
+        "trust_remote_code": True,
+        "device_map": "auto",
+    }
+    
+    # Configure precision
+    if args.precision == "bf16":
+        model_kwargs["torch_dtype"] = torch.bfloat16
+    elif args.precision == "fp16":
+        model_kwargs["torch_dtype"] = torch.float16
+    elif args.precision == "fp32":
+        model_kwargs["torch_dtype"] = torch.float32
+    elif args.precision == "int8":
+        model_kwargs["load_in_8bit"] = True
+    elif args.precision == "int4":
+        from transformers import BitsAndBytesConfig
+        model_kwargs["quantization_config"] = BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=torch.float16,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16
-        )
-        
-        # Load model
-        print(f"Loading the model: {args.model_name_or_path}")
-        model = AutoModelForCausalLM.from_pretrained(
-            args.model_name_or_path,
-            quantization_config=bnb_config,
-            device_map="auto",
-            trust_remote_code=True,
-            offload_folder=args.offload_folder,
+            bnb_4bit_use_double_quant=False  # Disabling double quantization for better quality
         )
     
-    # Load and apply the model's default generation config
-    print("Loading model's default generation config")
-    model.generation_config = GenerationConfig.from_pretrained(args.model_name_or_path)
-    model.generation_config.pad_token_id = model.generation_config.eos_token_id
+    # Load model
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_name_or_path,
+        **model_kwargs
+    )
     
     # Set evaluation mode
     model.eval()
@@ -284,7 +351,7 @@ def main():
     dataset = load_dataset("gsm8k", "main", split="test")
     
     # Evaluate the model
-    accuracy = evaluate_gsm8k(model, tokenizer, dataset, args.num_samples, args.max_new_tokens, args.output_dir, args.use_step_by_step)
+    accuracy = evaluate_gsm8k(model, tokenizer, dataset, args)
     
     return accuracy
 

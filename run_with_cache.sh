@@ -25,8 +25,12 @@ mkdir -p $WORKDIR/offload_folder
 # Setup environment
 python -c "from cluster_config import setup_environment; setup_environment()"
 
-# Run the evaluation or other command
-# Replace with the specific command you're trying to run
-python baseline_evaluate.py --num_samples 100 --offload_folder $WORKDIR/offload_folder
+# Run the evaluation with improved parameters
+python baseline_evaluate.py \
+  --num_samples 10 \
+  --temperature 0.1 \
+  --precision bf16 \
+  --prompt_template gsm8k_format \
+  --output_dir $WORKDIR/baseline_results
 
 echo "Job completed at $(date)" 
