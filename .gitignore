@@ -1,0 +1,81 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+ENV/
+.env
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# Model files
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+adapter_model.bin
+adapter_config.json
+
+# Data
+baseline_results/
+finetuned_results/
+comparison_results/
+outputs/
+
+# Logs
+runs/
+logs/
+wandb/
+*.log
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Large files
+*.csv
+*.json
+*.jsonl
+*.tsv
+
+# Tensorboard
+events.out.tfevents*
+
+# Hugging Face cache
+.hf_cache/
+.cache/
+.transformers_cache/
+.huggingface/
+
+# Offload folder
+offload_folder/
+
+# Keep specific files even if they match patterns above
+!requirements.txt 
