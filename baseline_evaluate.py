@@ -12,6 +12,8 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
+    StoppingCriteria, 
+    StoppingCriteriaList
 )
 from tqdm import tqdm
 import platform
@@ -91,6 +93,33 @@ def extract_answer(text):
     
     return None
 
+# Custom stopping criteria to detect repetition loops
+class RepetitionDetectionCriteria(StoppingCriteria):
+    def __init__(self, tokenizer, window_size=20, threshold=0.8):
+        self.tokenizer = tokenizer
+        self.window_size = window_size
+        self.threshold = threshold
+        
+    def __call__(self, input_ids, scores, **kwargs):
+        # If we don't have enough tokens yet, continue
+        if input_ids.shape[1] < self.window_size * 2:
+            return False
+            
+        # Get the last n tokens
+        last_tokens = input_ids[0, -self.window_size:].tolist()
+        # Get the tokens before those
+        previous_tokens = input_ids[0, -2*self.window_size:-self.window_size].tolist()
+        
+        # Calculate similarity (simple repeated token count)
+        repeated = sum(1 for a, b in zip(last_tokens, previous_tokens) if a == b)
+        similarity = repeated / self.window_size
+        
+        # If similarity is too high, stop generation
+        return similarity > self.threshold
+        
+    def __repr__(self):
+        return f"RepetitionDetectionCriteria(window_size={self.window_size}, threshold={self.threshold})"
+
 def evaluate_gsm8k(model, tokenizer, dataset, num_samples, max_new_tokens, output_dir):
     """Evaluate the model on GSM8K dataset."""
     correct = 0
@@ -101,21 +130,29 @@ def evaluate_gsm8k(model, tokenizer, dataset, num_samples, max_new_tokens, outpu
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
     
+    # Create repetition detection criteria
+    repetition_criteria = RepetitionDetectionCriteria(tokenizer)
+    
     for i in tqdm(range(total), desc="Evaluating"):
         example = dataset[i]
         prompt = format_prompt(example)
         
         inputs = tokenizer(prompt, return_tensors="pt").to(device)
         
-        # Generate output
+        # Generate output with improved parameters to prevent looping
         with torch.no_grad():
             outputs = model.generate(
                 input_ids=inputs["input_ids"],
                 attention_mask=inputs["attention_mask"],
                 max_new_tokens=max_new_tokens,
-                do_sample=False,  # Greedy decoding
-                temperature=1.0,  # Not used with greedy decoding
+                do_sample=True,  # Use sampling instead of greedy decoding
+                temperature=0.8,  # Lower temperature for more focused generation
+                top_p=0.95,  # Nucleus sampling
+                repetition_penalty=1.2,  # Penalize repetition
+                no_repeat_ngram_size=3,  # Avoid repeating 3-grams
+                eos_token_id=tokenizer.eos_token_id,  # Explicitly set EOS token
                 pad_token_id=tokenizer.eos_token_id,
+                stopping_criteria=StoppingCriteriaList([repetition_criteria])
             )
         
         # Extract output text
