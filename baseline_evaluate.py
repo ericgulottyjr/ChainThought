@@ -13,10 +13,38 @@ from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig,
     StoppingCriteria, 
-    StoppingCriteriaList
+    StoppingCriteriaList,
+    GenerationConfig
 )
 from tqdm import tqdm
 import platform
+
+# Custom stopping criteria to detect repetition loops
+class RepetitionDetectionCriteria(StoppingCriteria):
+    def __init__(self, tokenizer, window_size=20, threshold=0.8):
+        self.tokenizer = tokenizer
+        self.window_size = window_size
+        self.threshold = threshold
+        
+    def __call__(self, input_ids, scores, **kwargs):
+        # If we don't have enough tokens yet, continue
+        if input_ids.shape[1] < self.window_size * 2:
+            return False
+            
+        # Get the last n tokens
+        last_tokens = input_ids[0, -self.window_size:].tolist()
+        # Get the tokens before those
+        previous_tokens = input_ids[0, -2*self.window_size:-self.window_size].tolist()
+        
+        # Calculate similarity (simple repeated token count)
+        repeated = sum(1 for a, b in zip(last_tokens, previous_tokens) if a == b)
+        similarity = repeated / self.window_size
+        
+        # If similarity is too high, stop generation
+        return similarity > self.threshold
+        
+    def __repr__(self):
+        return f"RepetitionDetectionCriteria(window_size={self.window_size}, threshold={self.threshold})"
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate baseline Deepseek-7B on GSM8K")
@@ -56,11 +84,23 @@ def parse_args():
         default=42, 
         help="Random seed"
     )
+    parser.add_argument(
+        "--use_step_by_step",
+        action="store_true",
+        help="Include step-by-step instruction in the prompt"
+    )
     return parser.parse_args()
 
-def format_prompt(example):
+def format_prompt(example, use_step_by_step=True):
     """Format the GSM8K problem into a prompt for the model."""
-    return f"""Below is a grade school math problem. Solve it step-by-step.
+    if use_step_by_step:
+        return f"""Below is a grade school math problem. Solve it step-by-step.
+
+Problem: {example["question"]}
+
+Solution:"""
+    else:
+        return f"""Below is a grade school math problem.
 
 Problem: {example["question"]}
 
@@ -93,34 +133,7 @@ def extract_answer(text):
     
     return None
 
-# Custom stopping criteria to detect repetition loops
-class RepetitionDetectionCriteria(StoppingCriteria):
-    def __init__(self, tokenizer, window_size=20, threshold=0.8):
-        self.tokenizer = tokenizer
-        self.window_size = window_size
-        self.threshold = threshold
-        
-    def __call__(self, input_ids, scores, **kwargs):
-        # If we don't have enough tokens yet, continue
-        if input_ids.shape[1] < self.window_size * 2:
-            return False
-            
-        # Get the last n tokens
-        last_tokens = input_ids[0, -self.window_size:].tolist()
-        # Get the tokens before those
-        previous_tokens = input_ids[0, -2*self.window_size:-self.window_size].tolist()
-        
-        # Calculate similarity (simple repeated token count)
-        repeated = sum(1 for a, b in zip(last_tokens, previous_tokens) if a == b)
-        similarity = repeated / self.window_size
-        
-        # If similarity is too high, stop generation
-        return similarity > self.threshold
-        
-    def __repr__(self):
-        return f"RepetitionDetectionCriteria(window_size={self.window_size}, threshold={self.threshold})"
-
-def evaluate_gsm8k(model, tokenizer, dataset, num_samples, max_new_tokens, output_dir):
+def evaluate_gsm8k(model, tokenizer, dataset, num_samples, max_new_tokens, output_dir, use_step_by_step=True):
     """Evaluate the model on GSM8K dataset."""
     correct = 0
     total = min(num_samples, len(dataset))
@@ -135,23 +148,16 @@ def evaluate_gsm8k(model, tokenizer, dataset, num_samples, max_new_tokens, outpu
     
     for i in tqdm(range(total), desc="Evaluating"):
         example = dataset[i]
-        prompt = format_prompt(example)
+        prompt = format_prompt(example, use_step_by_step)
         
         inputs = tokenizer(prompt, return_tensors="pt").to(device)
         
-        # Generate output with improved parameters to prevent looping
+        # Generate output using model's own generation config with minimal overrides
         with torch.no_grad():
             outputs = model.generate(
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs["attention_mask"],
+                **inputs,
                 max_new_tokens=max_new_tokens,
-                do_sample=True,  # Use sampling instead of greedy decoding
-                temperature=0.8,  # Lower temperature for more focused generation
-                top_p=0.95,  # Nucleus sampling
-                repetition_penalty=1.2,  # Penalize repetition
-                no_repeat_ngram_size=3,  # Avoid repeating 3-grams
-                eos_token_id=tokenizer.eos_token_id,  # Explicitly set EOS token
-                pad_token_id=tokenizer.eos_token_id,
+                repetition_penalty=1.1,  # Light repetition penalty
                 stopping_criteria=StoppingCriteriaList([repetition_criteria])
             )
         
@@ -227,6 +233,14 @@ def main():
     # Check if we're on Apple Silicon
     is_mac_arm = platform.system() == "Darwin" and platform.machine() == "arm64"
     
+    # Load tokenizer first
+    print(f"Loading tokenizer: {args.model_name_or_path}")
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_name_or_path,
+        trust_remote_code=True,
+        use_fast=True
+    )
+    
     # Configure quantization based on platform
     if is_mac_arm:
         print("Detected Apple Silicon Mac. Using float16 precision instead of 4-bit quantization.")
@@ -257,12 +271,10 @@ def main():
             offload_folder=args.offload_folder,
         )
     
-    # Load tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.model_name_or_path,
-        trust_remote_code=True,
-        use_fast=True
-    )
+    # Load and apply the model's default generation config
+    print("Loading model's default generation config")
+    model.generation_config = GenerationConfig.from_pretrained(args.model_name_or_path)
+    model.generation_config.pad_token_id = model.generation_config.eos_token_id
     
     # Set evaluation mode
     model.eval()
@@ -272,7 +284,7 @@ def main():
     dataset = load_dataset("gsm8k", "main", split="test")
     
     # Evaluate the model
-    accuracy = evaluate_gsm8k(model, tokenizer, dataset, args.num_samples, args.max_new_tokens, args.output_dir)
+    accuracy = evaluate_gsm8k(model, tokenizer, dataset, args.num_samples, args.max_new_tokens, args.output_dir, args.use_step_by_step)
     
     return accuracy
 
