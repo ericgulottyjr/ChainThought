@@ -30,3 +30,7 @@ Once the requirements have been installed, `run_with_cache.sh` contains all the 
 ### Example output
 
 Check the `example_output.json` file for examples of how the model responds to questions from the GSM8K dataset.
+
+### TODO
+
+Update example output with examples of when the `max_tokens` value is set to a larger number (between 1000 and 2000 instead of the current 100). Examples in the example output have been truncated because of the small number of new tokens that can be generated.
