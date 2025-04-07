@@ -15,15 +15,15 @@ DS542 Final Project
 
 - Start interactive session
 - Navigate to the project directory
-- Load miniconda and activate python environment
-- Create a venv named `.venv` (since that's what's in the `.gitignore` file)
+- Load miniconda and activate Python environment
+- Create a virtual environment named `.venv` (since that's what's in the `.gitignore` file)
 - Install requirements
 
 Once the requirements have been installed, `run_with_cache.sh` contains all the commands to run the evaluation code for the base model on an SCC interactive session.
 
 #### Extra files for evaluation
 
-`clean_cache.sh` lets users clear the HuggingFace cache stored in the working directory.
+`clean_cache.sh` lets users clear the Hugging Face cache stored in the working directory.
 
 `testing.py` lets users test individual math problems by replacing the input sentence and adjusting `max_tokens`.
 
