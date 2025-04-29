@@ -1,0 +1,23 @@
+method: grid
+program: train.py
+metric:
+  name: eval_loss
+  goal: minimize
+parameters:
+  model.lora.r:
+    values: [8, 16, 32]
+  training.learning_rate:
+    values: [1e-5, 5e-5, 1e-4, 3e-4]
+  training.per_device_train_batch_size:
+    values: [1, 2]
+  training.num_train_epochs:
+    values: [1, 2, 3]
+
+# Add the command structure explicitly
+command:
+  - ${env}              # Pass environment variables
+  - python             # Command to run python
+  - ${program}          # Reference the program defined above (train.py)
+  - --config=default.yaml # Argument expected by train.py
+  - --small             # Argument expected by train.py (run sweeps on small dataset)
+  # Note: We don't include ${args} here because train.py gets sweep params via wandb.init()

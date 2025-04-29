@@ -1,0 +1,6 @@
+datasets
+transformers
+peft
+wandb
+pyyaml
+scikit-learn
