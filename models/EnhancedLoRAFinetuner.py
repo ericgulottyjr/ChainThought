@@ -129,7 +129,7 @@ def main(args):
 
     # Override the output directory to avoid overwriting existing checkpoints
     original_output_dir = cfg['training']['output_dir']
-    cfg['training']['output_dir'] = "outputs/train2/"
+    cfg['training']['output_dir'] = "../outputs/train2/"
     print(f"IMPORTANT: Changed output directory from {original_output_dir} to {cfg['training']['output_dir']}")
 
     # Make sure the output directory exists
@@ -163,8 +163,8 @@ def main(args):
     print(f"W&B Run Name: {run_name}")
 
     # Load data
-    train_list = load_jsonl('data/formatted/train.jsonl')
-    val_list = load_jsonl('data/formatted/validation.jsonl')
+    train_list = load_jsonl('../data/formatted/train.jsonl')
+    val_list = load_jsonl('../data/formatted/validation.jsonl')
     
     # Use small subset if requested (for quick testing)
     if args.small:

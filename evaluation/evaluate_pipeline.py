@@ -136,12 +136,12 @@ def main():
         help="Base model ID from Hugging Face Hub."
     )
     parser.add_argument(
-        "--best_checkpoints_dir", type=str, default="outputs/best_checkpoints",
+        "--best_checkpoints_dir", type=str, default="../outputs/best_checkpoints",
         help="Directory containing adapter/model checkpoint subfolders"
     )
     parser.add_argument(
         "--test_file", type=str,
-        default='data/formatted/test.jsonl', help="Path to the input test file (.jsonl format)."
+        default='../data/formatted/test.jsonl', help="Path to the input test file (.jsonl format)."
     )
     parser.add_argument(
         "--max_new_tokens", type=int, default=256,
@@ -152,11 +152,11 @@ def main():
         help="Limit number of examples (0 = no limit)"
     )
     parser.add_argument(
-        "--cache_dir", type=str, default='data/.hf_home',
+        "--cache_dir", type=str, default='../data/.hf_home',
         help="Optional HF cache directory"
     )
     parser.add_argument(
-        "--output_summary", type=str, default="outputs/eval_summary.json",
+        "--output_summary", type=str, default="../outputs/eval_summary.json",
         help="Path to write aggregated metrics JSON"
     )
     parser.add_argument(

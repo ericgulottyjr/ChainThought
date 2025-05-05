@@ -153,7 +153,7 @@ def main():
         print(f"  {metric_name}: {value:.4f}")
     
     # Save metrics to file
-    output_path = "outputs/train2_evalmetrics.jsonl"
+    output_path = "../outputs/train2_evalmetrics.jsonl"
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, 'w') as f:
         json.dump(metrics, f, indent=2)

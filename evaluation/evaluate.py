@@ -126,13 +126,13 @@ def main(args):
         })
 
     # Save results to a file
-    output_filename = f"outputs/eval_{args.model_type}.jsonl"
+    output_filename = f"../outputs/eval_{args.model_type}.jsonl"
     if args.adapter_path:
          # Add adapter name to filename if provided
          adapter_name = os.path.basename(os.path.normpath(args.adapter_path))
-         output_filename = f"outputs/eval_{adapter_name}.jsonl"
+         output_filename = f"../outputs/eval_{adapter_name}.jsonl"
          
-    os.makedirs("outputs", exist_ok=True)
+    os.makedirs(os.path.dirname(output_filename), exist_ok=True)
     print(f"\n--- Saving results to {output_filename} ---")
     with open(output_filename, 'w') as f:
         for result in results:
@@ -145,7 +145,7 @@ if __name__ == '__main__':
     parser.add_argument('--base_model_id', type=str, default="deepseek-ai/deepseek-llm-7b-base", help="Base model ID from Hugging Face Hub.")
     parser.add_argument('--model_type', type=str, required=True, choices=['base', 'tuned'], help="Specify 'base' or 'tuned'.")
     parser.add_argument('--adapter_path', type=str, default=None, help="Path to the trained LoRA adapter directory (required if model_type='tuned').")
-    parser.add_argument('--test_file', type=str, default='data/formatted/test.jsonl', help="Path to the input test file (.jsonl format).")
+    parser.add_argument('--test_file', type=str, default='../data/formatted/test.jsonl', help="Path to the input test file (.jsonl format).")
     parser.add_argument('--max_new_tokens', type=int, default=256, help="Max new tokens to generate.")
     parser.add_argument('--limit', type=int, default=100, help="Limit the number of examples to evaluate (default: 100).")
     parser.add_argument('--output_filename', type=str, default=None, help="Specify the output filename (e.g., outputs/my_eval.jsonl). Overrides automatic naming.")
