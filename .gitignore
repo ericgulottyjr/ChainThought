@@ -24,6 +24,7 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+data/.hf_home/models--deepseek-ai--deepseek-llm-7b-base/blobs
 
 # PyInstaller
 # Usually these files are written by a python script from a template
@@ -94,6 +95,7 @@ logs/
 wandb/
 .wandb/
 slurm-*.out
+outputs/best_checkpoints
 
 # Data files (Uncomment if you don't want to track raw data)
 # data/
@@ -104,4 +106,3 @@ clearGPU.py
 # Ignore large model/optimizer files
 *.pt
 *.safetensors
-/outputs/best_checkpoints
