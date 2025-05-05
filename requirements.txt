@@ -4,3 +4,7 @@ peft
 wandb
 pyyaml
 scikit-learn
+torch
+numpy
+tqdm
+evaluate
