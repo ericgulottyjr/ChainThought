@@ -103,4 +103,5 @@ clearGPU.py
 
 # Ignore large model/optimizer files
 *.pt
- *.safetensors
+*.safetensors
+/outputs/best_checkpoints
