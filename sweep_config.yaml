@@ -13,11 +13,9 @@ parameters:
   training.num_train_epochs:
     values: [1, 2, 3]
 
-# Add the command structure explicitly
 command:
   - ${env}              # Pass environment variables
   - python             # Command to run python
   - ${program}          # Reference the program defined above (train.py)
   - --config=default.yaml # Argument expected by train.py
   - --small             # Argument expected by train.py (run sweeps on small dataset)
-  # Note: We don't include ${args} here because train.py gets sweep params via wandb.init()
