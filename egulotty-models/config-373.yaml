@@ -1,0 +1,22 @@
+model:
+  base_model: "deepseek-ai/deepseek-llm-7b-base"
+  dropout: 0.10           # new – LoRA uses this value
+  lora:
+    r: 16
+    alpha: 32             # unchanged
+
+training:
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  num_train_epochs: 1
+  learning_rate: 1e-4     # lower LR works better with constant-LR + QLoRA
+  seed: 42
+  output_dir: "outputs/checkpoints/"
+
+cache:
+  hf_home: "data/.hf_home"
+  datasets_cache: "data/.hf_home/datasets"
+
+wandb:
+  project: "deepseek-gsm8k-finetuned-v2"
+  entity: "egulotty-boston-university"
