@@ -35,7 +35,7 @@ device_map = {"": 0}  # force single GPU usage
 MAX_LEN = 256
 data_cache = 'gsm8k_cached'
 MODEL_NAME = 'deepseek-ai/deepseek-llm-7b-base'
-OUTPUT_DIR = 'deepseek7b-gsm8k-fixed'
+OUTPUT_DIR = '../outputs/deepseek7b-gsm8k-fixed'
 
 # Data loading & preprocessing
 def load_data(split='train'):

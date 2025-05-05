@@ -44,6 +44,10 @@ def main(args):
     print(f"Loaded configuration from: {args.config}")
     print(f"Running with parameters: {cfg}")
 
+    # Set output directory with proper relative path
+    cfg['training']['output_dir'] = "../outputs/base_lora/"
+    print(f"Setting output directory to: {cfg['training']['output_dir']}")
+    
     set_seed(cfg['training']['seed'])
     
     # Initialize wandb for logging this single run
@@ -60,8 +64,8 @@ def main(args):
     print(f"W&B Run Name: {run_name}")
 
     # Load data
-    train_list = load_jsonl('data/formatted/train.jsonl')
-    val_list = load_jsonl('data/formatted/validation.jsonl')
+    train_list = load_jsonl('../data/formatted/train.jsonl')
+    val_list = load_jsonl('../data/formatted/validation.jsonl')
     
     # Use small subset if requested (for quick testing)
     if args.small:

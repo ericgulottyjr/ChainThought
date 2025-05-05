@@ -97,6 +97,9 @@ def main(args):
     cfg = load_config(args.config)
     set_seed(cfg["training"]["seed"])
 
+    # Set output directory with proper relative path 
+    cfg["training"]["output_dir"] = "../outputs/train2/"
+    
     # Adjust batch size and gradient accumulation for memory efficiency
     # Original: batch_size=8, gradient_accumulation=1
     # New: batch_size=4, gradient_accumulation=2 (same effective batch size)
