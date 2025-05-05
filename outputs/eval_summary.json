@@ -1,22 +1,44 @@
 {
-  "bwong-train1-checkpoint-1119": {
+  "baseline": {
+    "accuracy": 0.05,
+    "per_token_accuracy": 0.015078291127005606,
+    "precision": 0.1614142966948501,
+    "recall": 0.1891891891891892,
+    "f1": 0.17420157610949813
+  },
+  "BaseLoRAFinetuner": {
     "accuracy": 0.36,
-    "f1": 0.5019910182764789
+    "per_token_accuracy": 0.06340614730330563,
+    "precision": 0.5480943738656987,
+    "recall": 0.45345345345345345,
+    "f1": 0.4963023829087921
   },
-  "bwong-train2-checkpoint-1119": {
+  "EnhancedLoRAFinetuner": {
     "accuracy": 0.38,
-    "f1": 0.5039239078878158
+    "per_token_accuracy": 0.062052967330369226,
+    "precision": 0.5412552891396333,
+    "recall": 0.46096096096096095,
+    "f1": 0.4978916639636718
   },
-  "egulotty-checkpoint-1500": {
+  "GSM8kSolver": {
     "accuracy": 0.34,
-    "f1": 0.4694695322817555
+    "per_token_accuracy": 0.03150976222694761,
+    "precision": 0.48666880822357855,
+    "recall": 0.45495495495495497,
+    "f1": 0.4702778208908893
   },
-  "egulotty-checkpoint-373": {
-    "accuracy": 0.18,
-    "f1": 0.4386114182042731
-  },
-  "egulotty-checkpoint-748": {
+  "QLoRATrainer": {
     "accuracy": 0.23,
-    "f1": 0.42468873849965794
+    "per_token_accuracy": 0.061086410206843224,
+    "precision": 0.5158457426498664,
+    "recall": 0.4057057057057057,
+    "f1": 0.4541939821818793
+  },
+  "MemoryOptimizedLoRA": {
+    "accuracy": 0.23,
+    "per_token_accuracy": 0.05799342741156002,
+    "precision": 0.49260728452939057,
+    "recall": 0.4102102102102102,
+    "f1": 0.4476486973619531
   }
 }
