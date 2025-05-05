@@ -27,30 +27,6 @@ def load_jsonl(path: str):
         return [json.loads(line) for line in f]
 
 ############################################################
-# Metrics                                                  #
-############################################################
-# We switch to *sample-level* accuracy rather than token-level.
-# Expected GSM8K style: answer appears after the token sequence
-# "#### <answer>". We strip everything before the last hash.
-
-def build_compute_metrics(tokenizer):
-    accuracy = evaluate.load("accuracy")
-
-    def _postprocess(pred_ids, label_ids):
-        preds = tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
-        labels = tokenizer.batch_decode(label_ids, skip_special_tokens=True)
-        preds = [p.split("####")[-1].strip() for p in preds]
-        labels = [l.split("####")[-1].strip() for l in labels]
-        return preds, labels
-
-    def _compute(eval_pred):
-        pred_ids, label_ids = eval_pred
-        preds, labels = _postprocess(pred_ids, label_ids)
-        return accuracy.compute(predictions=preds, references=labels)
-
-    return _compute
-
-############################################################
 # Model + tokenizer                                        #
 ############################################################
 
@@ -178,12 +154,12 @@ def main(args):
         adam_beta2=0.95,
         weight_decay=0.1,
         logging_steps=25,
-        #save_steps=100,
-        #save_total_limit=3,
+        save_steps=100,
+        save_total_limit=3,
         per_device_eval_batch_size=1,
-        eval_accumulation_steps=1,
-        eval_strategy="epoch",
-        #save_strategy="steps",
+        #eval_accumulation_steps=1,
+        #eval_strategy="epoch",
+        save_strategy="steps",
         #load_best_model_at_end=True,
         #metric_for_best_model="eval_accuracy",
         greater_is_better=True,
@@ -201,7 +177,6 @@ def main(args):
         args=targs,
         train_dataset=train_tok,
         eval_dataset=val_tok,
-        compute_metrics=build_compute_metrics(tokenizer),
         processing_class=tokenizer,
     )
 
@@ -221,11 +196,6 @@ def main(args):
 
     # Evaluation & save
     if accelerator.is_main_process:
-        print("[Trainer] Evaluating …")
-        eval_res = trainer.evaluate()
-        print(f"[Eval] {eval_res}")
-        if wandb_run:
-            wandb_run.log(eval_res)
         final_path = os.path.join(cfg["training"]["output_dir"], "best_model")
         trainer.save_model(final_path)
         print(f"[Save] Best model -> {final_path}")

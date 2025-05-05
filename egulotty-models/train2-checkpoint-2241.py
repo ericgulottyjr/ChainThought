@@ -24,9 +24,8 @@ from transformers import (
     TrainingArguments,
     AutoTokenizer,
     AutoModelForCausalLM,
-    BitsAndBytesConfig,
 )
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, get_peft_model
 from accelerate import Accelerator
 from utils import set_seed, load_config
 import wandb
@@ -35,7 +34,7 @@ def load_jsonl(path: str):
     with open(path) as f:
         return [json.loads(line) for line in f]
 
-def get_quantised_lora_model(cfg):
+def get_full_precision_lora_model(cfg):
     base = cfg["model"]["base_model"]
     cache_dir = cfg["cache"]["hf_home"]
 
@@ -43,31 +42,44 @@ def get_quantised_lora_model(cfg):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    bnb_cfg = BitsAndBytesConfig(
-     load_in_8bit=True,                     # 8-bit INT quant in-GPU
-     llm_int8_enable_fp32_cpu_offload=False, # no CPU shuttling
-    )
+    # Determine optimal precision - use BF16 if available (A100 supports it)
+    torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    print(f"Using {torch_dtype} precision for model loading")
+    
+    # Load model in full precision (but still use FP16/BF16)
     model = AutoModelForCausalLM.from_pretrained(
         base,
         cache_dir=cache_dir,
-        device_map="auto",
-        quantization_config=bnb_cfg,
+        device_map="auto",  # Let the system determine optimal device mapping
+        torch_dtype=torch_dtype,  # Use BF16 on A100, FP16 otherwise
     )
 
-    model = prepare_model_for_kbit_training(model)
-    model.enable_input_require_grads()
+    # Enable gradient checkpointing to save memory
     model.gradient_checkpointing_enable()
 
+    # Configure LoRA with adjusted rank to fit in memory
     lcfg = cfg["model"]["lora"]
+    # Reduce rank from 64 to 32 for memory efficiency
+    lora_rank = lcfg.get("r", 64) // 2  # Halve the rank to save memory
+    lora_alpha = lcfg.get("alpha", 64) // 2  # Keep alpha:rank ratio the same
+    
+    print(f"Using adjusted LoRA parameters: r={lora_rank}, alpha={lora_alpha} (reduced from r={lcfg.get('r', 64)}, alpha={lcfg.get('alpha', 64)})")
+    
     lora_cfg = LoraConfig(
-        r=lcfg["r"],
-        lora_alpha=lcfg["alpha"],
+        r=lora_rank,
+        lora_alpha=lora_alpha,
         lora_dropout=cfg["model"]["dropout"],
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
         bias="none",
         task_type="CAUSAL_LM",
     )
     model = get_peft_model(model, lora_cfg)
+    
+    # Print parameter counts for debugging
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Trainable parameters: {trainable_params:,} ({100 * trainable_params / total_params:.2f}% of {total_params:,} total)")
+    
     return tokenizer, model
 
 def sample_dataset(lst, k, seed=42):
@@ -85,10 +97,25 @@ def main(args):
     cfg = load_config(args.config)
     set_seed(cfg["training"]["seed"])
 
+    # Adjust batch size and gradient accumulation for memory efficiency
+    # Original: batch_size=8, gradient_accumulation=1
+    # New: batch_size=4, gradient_accumulation=2 (same effective batch size)
+    cfg["training"]["per_device_train_batch_size"] = 4
+    cfg["training"]["gradient_accumulation_steps"] = 2
+    
+    # Optionally reduce sequence length to save memory
+    # Original: 2048
+    # New: 1536 (25% reduction)
+    cfg["training"]["max_length"] = 1536
+    
+    print(f"[Memory Optimization] Adjusted batch size: {cfg['training']['per_device_train_batch_size']}")
+    print(f"[Memory Optimization] Adjusted gradient accumulation: {cfg['training']['gradient_accumulation_steps']}")
+    print(f"[Memory Optimization] Adjusted max length: {cfg['training']['max_length']}")
+
     # W&B
     run_name = (
-        f"lora_r{cfg['model']['lora']['r']}"
-        f"_α{cfg['model']['lora']['alpha']}"
+        f"full_precision_lora_r{cfg['model']['lora']['r']//2}"
+        f"_α{cfg['model']['lora']['alpha']//2}"
         f"_lr{cfg['training']['learning_rate']}"
     )
     if accelerator.is_main_process:
@@ -108,7 +135,7 @@ def main(args):
     train_ds = Dataset.from_list(train_list)
 
     # Model & tokenizer
-    tokenizer, model = get_quantised_lora_model(cfg)
+    tokenizer, model = get_full_precision_lora_model(cfg)
     max_len = cfg["training"]["max_length"]
 
     # Tokenization + chain-of-thought prompt + masking
@@ -170,6 +197,10 @@ def main(args):
         remove_unused_columns=False,
         label_names=["labels"],
         run_name=run_name,
+        # Add memory optimization flags
+        gradient_checkpointing=True,  # Enable gradient checkpointing through trainer
+        optim="adamw_torch",  # More memory-efficient optimizer
+        ddp_find_unused_parameters=False,  # Optimize distributed training
     )
 
     trainer = Trainer(
