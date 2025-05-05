@@ -1,4 +1,4 @@
-# ChainThought
+# ChainThought Project
 
 ## Repository Structure
 
