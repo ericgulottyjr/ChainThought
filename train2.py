@@ -45,7 +45,7 @@ def compute_metrics(eval_pred):
     
     # Convert to binary for other metrics (correct/incorrect predictions)
     binary_preds = (filtered_predictions == filtered_labels).astype(int)
-    binary_labels = np.ones_like(binary_preds)  # Ideal case is all correct predictions
+    binary_labels = np.ones_like(binary_preds) 
     
     # Compute additional metrics
     results.update(precision_metric.compute(predictions=binary_preds, references=binary_labels, average='macro'))
@@ -63,7 +63,7 @@ def get_enhanced_tokenizer_and_model(cfg: dict):
     # Initialize tokenizer
     tokenizer = AutoTokenizer.from_pretrained(base, use_fast=True, cache_dir=cache_dir)
     
-    # Set pad token if missing (common for Llama-based models)
+    # Set pad token if missing
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         print("Set tokenizer pad_token to eos_token")
@@ -73,11 +73,10 @@ def get_enhanced_tokenizer_and_model(cfg: dict):
         base, 
         cache_dir=cache_dir,
         # Use full precision to avoid FP16 gradient issues
-        # torch_dtype=torch.float16 if cfg.get('training', {}).get('fp16', False) else torch.float32
     )
 
     # Get the dropout value from config or use default
-    lora_dropout = cfg['model'].get('dropout', 0.1)  # Higher dropout than default
+    lora_dropout = cfg['model'].get('dropout', 0.1) 
     
     # Apply enhanced LoRA configuration
     lora_cfg = LoraConfig(
@@ -100,7 +99,6 @@ def get_enhanced_tokenizer_and_model(cfg: dict):
     # This ensures gradients will flow during backpropagation
     for param in model.parameters():
         if param.requires_grad:
-            # Double check that trainable params require gradients
             if not param.requires_grad:
                 param.requires_grad = True
     
@@ -190,9 +188,6 @@ def main(args):
     # Get enhanced model & tokenizer with improved dropout and configuration
     tokenizer, model = get_enhanced_tokenizer_and_model(cfg)
     
-    # Re-enable gradient checkpointing (comment out model.gradient_checkpointing_enable() if Trainer handles it)
-    # model.gradient_checkpointing_enable() # Trainer argument should handle this
-    # print("Gradient Checkpointing DISABLED") # Old message
     print("Gradient Checkpointing ENABLED (via TrainingArguments)") # Updated print
     
     # Print parameter grad status for debugging
@@ -201,8 +196,7 @@ def main(args):
     print(f"Model has {trainable_params:,} trainable parameters out of {all_params:,} total parameters")
 
     # Reduced max_length to help with repetition issues
-    # Based on analysis of example outputs that showed repetition
-    max_length = 768  # Reduced from 1024
+    max_length = 768
     print(f"Using reduced max_length: {max_length} (was 1024 in original)")
 
     def tokenize_fn(ex):
@@ -215,7 +209,7 @@ def main(args):
             padding='max_length',
             truncation=True,
             max_length=max_length,
-            return_tensors=None  # Changed from "pt" to None - don't convert to tensors yet
+            return_tensors=None 
         )
         
         # Set up labels as the input_ids (for causal LM)
@@ -241,7 +235,6 @@ def main(args):
     print(f"Train dataset features: {train_tokens.features}")
 
     # Enhanced training arguments - keep all existing parameters
-    # BUT remove device settings that conflict with Accelerate
     training_args = TrainingArguments(
         output_dir=cfg['training']['output_dir'],
         per_device_train_batch_size=cfg['training']['per_device_train_batch_size'],
@@ -261,7 +254,7 @@ def main(args):
         run_name=run_name,
         
         # Disable mixed precision to avoid FP16 gradient issues
-        # fp16=False, # Original setting
+        # fp16=False,
         bf16=True, # EXPERIMENTAL: Enable BF16 mixed precision (more stable than FP16)
         
         # Other improvements
@@ -293,8 +286,7 @@ def main(args):
         # Make training more stable
         dataloader_drop_last=True,
         
-        # IMPORTANT: Disable gradient checkpointing as it's causing issues with LoRA
-        gradient_checkpointing=False, # Disable gradient checkpointing to avoid gradient errors
+        gradient_checkpointing=False, # To avoid gradient errors
         torch_compile=False,  # Disable torch.compile to avoid memory spikes
     )
 
@@ -310,7 +302,6 @@ def main(args):
     print(f"Model moved to {device}")
     
     # Explicitly set use_cache to False for training 
-    # This ensures compatibility with both non-checkpoint and checkpoint versions
     if hasattr(model.config, "use_cache"):
         model.config.use_cache = False
         print("Disabled model.config.use_cache for training stability (needed for gradient checkpointing)") # Updated print
