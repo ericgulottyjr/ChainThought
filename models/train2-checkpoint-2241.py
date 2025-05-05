@@ -127,8 +127,8 @@ def main(args):
         )
 
     # Load JSONL
-    train_list = load_jsonl("data/formatted/train.jsonl")
-    val_list   = load_jsonl("data/formatted/validation.jsonl")
+    train_list = load_jsonl("../data/formatted/train.jsonl")
+    val_list   = load_jsonl("../data/formatted/validation.jsonl")
     if args.small:
         train_list = sample_dataset(train_list, 100, cfg["training"]["seed"])
         val_list   = sample_dataset(val_list,   20,  cfg["training"]["seed"])
