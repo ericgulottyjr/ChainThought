@@ -43,6 +43,22 @@ This repository contains code for the ChainThought project, which focuses on fin
 
 ---
 
+## AI Usage Statement
+
+Throughout the development of this final project we utilized Artificial Intelligence (AI) to streamline our programming process. The following summarizes how these AI systems were employed:
+
+| Phase | Purpose of AI Assistance | Typical AI Tools / Models Invoked |
+|-------|--------------------------|-----------------------------------|
+| **Code generation** | Drafted boilerplate modules, helper functions, and template scripts to accelerate initial implementation. | Large‑language‑model (LLM) chat assistants (e.g., OpenAI ChatGPT) and IDE code‑completion plugins. |
+| **Debugging** | Explained stack traces, suggested fixes for dependency conflicts, memory/OOM errors, and performance bottlenecks. | Conversational LLMs (natural‑language queries paired with error logs). |
+| **Evaluation & analysis** | Proposed metric definitions, drafted small evaluation scripts, and interpreted preliminary results. | LLMs for pseudocode → Python translations; automatic docstring generation. | 
+| **Design suggestions & iterative improvements** | Recommended hyper‑parameter tweaks, data‑pipeline optimizations, and experiment‑tracking conventions. | Chat assistants and model fine‑tuning guides. |
+
+**Summary:** AI models served as accelerators for repetitive or exploratory tasks. All substantive code, analyses, and written discussion reflect our team's work.
+
+
+---
+
 # Guide: Running This Project with Local DeepSeek LLMs
 
 Follow the steps below to clone the repo, build the three fine-tuned DeepSeek-7B models (V1 / V2 / V3) entirely on your own machine, serve them with **LM Studio**, and run the chat app locally.
