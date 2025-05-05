@@ -1,0 +1,22 @@
+{
+  "bwong-train1-checkpoint-1119": {
+    "accuracy": 0.36,
+    "f1": 0.5019910182764789
+  },
+  "bwong-train2-checkpoint-1119": {
+    "accuracy": 0.38,
+    "f1": 0.5039239078878158
+  },
+  "egulotty-checkpoint-1500": {
+    "accuracy": 0.34,
+    "f1": 0.4694695322817555
+  },
+  "egulotty-checkpoint-373": {
+    "accuracy": 0.18,
+    "f1": 0.4386114182042731
+  },
+  "egulotty-checkpoint-748": {
+    "accuracy": 0.23,
+    "f1": 0.42468873849965794
+  }
+}
