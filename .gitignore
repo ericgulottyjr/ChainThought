@@ -91,7 +91,6 @@ Thumbs.db
 # Logs and Outputs
 logs/
 *.log
-outputs/
 wandb/
 .wandb/
 slurm-*.out
@@ -101,3 +100,7 @@ slurm-*.out
 
 # Temporary scripts (like clearGPU)
 clearGPU.py 
+
+# Ignore large model/optimizer files
+*.pt
+ *.safetensors

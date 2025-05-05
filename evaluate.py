@@ -11,7 +11,7 @@ if 'HF_HOME' not in os.environ:
     print("Setting default HF_HOME cache...")
     os.environ['HF_HOME'] = 'data/.hf_home'
 if 'HF_DATASETS_CACHE' not in os.environ:
-     os.environ['HF_DATASETS_CACHE'] = 'data/.hf_home/datasets'
+    os.environ['HF_DATASETS_CACHE'] = 'data/.hf_home/datasets'
 
 # --- Model Loading Functions ---
 
@@ -148,7 +148,7 @@ if __name__ == '__main__':
     parser.add_argument('--test_file', type=str, default='data/formatted/test.jsonl', help="Path to the input test file (.jsonl format).")
     parser.add_argument('--max_new_tokens', type=int, default=256, help="Max new tokens to generate.")
     parser.add_argument('--limit', type=int, default=100, help="Limit the number of examples to evaluate (default: 100).")
-    # Removed --output_path, filename is now generated automatically
+    parser.add_argument('--output_filename', type=str, default=None, help="Specify the output filename (e.g., outputs/my_eval.jsonl). Overrides automatic naming.")
     
     args = parser.parse_args()
     

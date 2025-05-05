@@ -12,7 +12,8 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import LoraConfig, get_peft_model
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR
-from accelerate import Accelerator
+import transformers
+from transformers.trainer_utils import get_last_checkpoint
 
 
 def load_jsonl(path: str):
@@ -92,7 +93,17 @@ def get_enhanced_tokenizer_and_model(cfg: dict):
     print(f"Using LoRA with dropout={lora_dropout}, r={cfg['model']['lora']['r']}, alpha={cfg['model']['lora']['alpha']}")
     print(f"Targeting modules: q_proj, k_proj, v_proj, o_proj")
     
+    # Get PEFT model
     model = get_peft_model(model, lora_cfg)
+    
+    # Important: Enable requires_grad on the trainable parameters
+    # This ensures gradients will flow during backpropagation
+    for param in model.parameters():
+        if param.requires_grad:
+            # Double check that trainable params require gradients
+            if not param.requires_grad:
+                param.requires_grad = True
+    
     return tokenizer, model
 
 
@@ -108,35 +119,23 @@ def sample_dataset(dataset, sample_size, seed=42):
 
 
 def main(args):
-    # Initialize accelerator first
-    accelerator = Accelerator()
-    
-    # Get device info - use accelerator's device instead
-    device = accelerator.device
-    if accelerator.is_main_process:
-        print(f"Using device: {device}")
-        print(f"Number of processes: {accelerator.num_processes}")
-        print(f"Distributed type: {accelerator.distributed_type}")
-    
-    # Rest of device detection can stay for info purposes
+    # Get device info - revert to standard torch device detection
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     n_gpus = torch.cuda.device_count()
-    if accelerator.is_main_process:
-        print(f"Found {n_gpus} GPUs")
-    
+    print(f"Using device: {device}")
+    print(f"Found {n_gpus} GPUs")
+
     # Load config
     cfg = load_config(args.config)
-    if accelerator.is_main_process:
-        print(f"Loaded configuration from: {args.config}")
-    
+    print(f"Loaded configuration from: {args.config}")
+
     # Override the output directory to avoid overwriting existing checkpoints
     original_output_dir = cfg['training']['output_dir']
     cfg['training']['output_dir'] = "outputs/train2/"
-    if accelerator.is_main_process:
-        print(f"IMPORTANT: Changed output directory from {original_output_dir} to {cfg['training']['output_dir']}")
-    
+    print(f"IMPORTANT: Changed output directory from {original_output_dir} to {cfg['training']['output_dir']}")
+
     # Make sure the output directory exists
-    if accelerator.is_main_process:
-        os.makedirs(cfg['training']['output_dir'], exist_ok=True)
+    os.makedirs(cfg['training']['output_dir'], exist_ok=True)
 
     # Set seed for reproducibility
     set_seed(cfg['training']['seed'])
@@ -156,17 +155,14 @@ def main(args):
     if args.small:
         run_name = f"small_{run_name}"
         
-    # Initialize wandb - only on main process
-    if accelerator.is_main_process:
-        run = wandb.init(
-            project=cfg['wandb']['project'],
-            entity=cfg['wandb']['entity'],
-            config=cfg,  # Log the config used for this run
-            name=run_name
-        )
-        print(f"W&B Run Name: {run_name}")
-    else:
-        run = None
+    # Initialize wandb - Removed accelerator check
+    run = wandb.init(
+        project=cfg['wandb']['project'],
+        entity=cfg['wandb']['entity'],
+        config=cfg,  # Log the config used for this run
+        name=run_name
+    )
+    print(f"W&B Run Name: {run_name}")
 
     # Load data
     train_list = load_jsonl('data/formatted/train.jsonl')
@@ -182,13 +178,11 @@ def main(args):
         # Sample 20 examples for validation
         val_list = sample_dataset(val_list, 20, seed=cfg['training']['seed'])
         
-        if accelerator.is_main_process:
-            print(f"SMALL DATASET MODE: Using {len(train_list)}/{original_train_size} train examples")
-            print(f"SMALL DATASET MODE: Using {len(val_list)}/{original_val_size} validation examples")
+        print(f"SMALL DATASET MODE: Using {len(train_list)}/{original_train_size} train examples")
+        print(f"SMALL DATASET MODE: Using {len(val_list)}/{original_val_size} validation examples")
     else:
-        if accelerator.is_main_process:
-            print(f"FULL DATASET MODE: Using all {len(train_list)} train examples")
-            print(f"FULL DATASET MODE: Using all {len(val_list)} validation examples")
+        print(f"FULL DATASET MODE: Using all {len(train_list)} train examples")
+        print(f"FULL DATASET MODE: Using all {len(val_list)} validation examples")
     
     train_ds = Dataset.from_list(train_list)
     val_ds = Dataset.from_list(val_list)
@@ -196,30 +190,20 @@ def main(args):
     # Get enhanced model & tokenizer with improved dropout and configuration
     tokenizer, model = get_enhanced_tokenizer_and_model(cfg)
     
-    # DISABLE gradient checkpointing as it's causing issues with gradient propagation
-    # model.gradient_checkpointing_enable()
-    if accelerator.is_main_process:
-        print("Gradient Checkpointing DISABLED to avoid gradient computation issues")
-    
-    # Ensure parameters require gradients
-    for param in model.parameters():
-        param.requires_grad = True
-    
-    # No DataParallel - accelerate handles distributed training
-    # Don't place on device manually - accelerate will handle it
-    model.train()
+    # Re-enable gradient checkpointing (comment out model.gradient_checkpointing_enable() if Trainer handles it)
+    # model.gradient_checkpointing_enable() # Trainer argument should handle this
+    # print("Gradient Checkpointing DISABLED") # Old message
+    print("Gradient Checkpointing ENABLED (via TrainingArguments)") # Updated print
     
     # Print parameter grad status for debugging
-    if accelerator.is_main_process:
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        all_params = sum(p.numel() for p in model.parameters())
-        print(f"Model has {trainable_params:,} trainable parameters out of {all_params:,} total parameters")
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    all_params = sum(p.numel() for p in model.parameters())
+    print(f"Model has {trainable_params:,} trainable parameters out of {all_params:,} total parameters")
 
     # Reduced max_length to help with repetition issues
     # Based on analysis of example outputs that showed repetition
     max_length = 768  # Reduced from 1024
-    if accelerator.is_main_process:
-        print(f"Using reduced max_length: {max_length} (was 1024 in original)")
+    print(f"Using reduced max_length: {max_length} (was 1024 in original)")
 
     def tokenize_fn(ex):
         # Format as a single text string (input + target)
@@ -231,27 +215,33 @@ def main(args):
             padding='max_length',
             truncation=True,
             max_length=max_length,
-            return_tensors="pt"
+            return_tensors=None  # Changed from "pt" to None - don't convert to tensors yet
         )
         
         # Set up labels as the input_ids (for causal LM)
-        tokenized["labels"] = tokenized["input_ids"].clone()
+        tokenized["labels"] = tokenized["input_ids"].copy()
         
-        # Remove batch dimension
-        return {k: v.squeeze(0) for k, v in tokenized.items()}
+        # Return without squeezing (no batch dimension since return_tensors=None)
+        return tokenized
 
-    # Tokenize datasets
-    if accelerator.is_main_process:
-        print("Tokenizing training data...")
-    train_tokens = train_ds.map(tokenize_fn, batched=False)
-    if accelerator.is_main_process:
-        print("Tokenizing validation data...")
-    val_tokens = val_ds.map(tokenize_fn, batched=False)
+    # Tokenize datasets - change to process in batches with explicit settings
+    print("Tokenizing training data...")
+    train_tokens = train_ds.map(
+        tokenize_fn, 
+        batched=False,
+        remove_columns=['input', 'target']  # Remove original text columns after tokenization
+    )
+    print("Tokenizing validation data...")
+    val_tokens = val_ds.map(
+        tokenize_fn, 
+        batched=False,
+        remove_columns=['input', 'target']  # Remove original text columns after tokenization
+    )
     
-    if accelerator.is_main_process:
-        print(f"Train dataset features: {train_tokens.features}")
+    print(f"Train dataset features: {train_tokens.features}")
 
     # Enhanced training arguments - keep all existing parameters
+    # BUT remove device settings that conflict with Accelerate
     training_args = TrainingArguments(
         output_dir=cfg['training']['output_dir'],
         per_device_train_batch_size=cfg['training']['per_device_train_batch_size'],
@@ -262,6 +252,8 @@ def main(args):
         # More frequent logging and evaluation
         logging_steps=25,
         eval_steps=100,
+        # Flush evaluation predictions to CPU every step to avoid OOM
+        eval_accumulation_steps=1,
         save_steps=200,
         save_total_limit=3,
         
@@ -269,11 +261,12 @@ def main(args):
         run_name=run_name,
         
         # Disable mixed precision to avoid FP16 gradient issues
-        fp16=False,
+        # fp16=False, # Original setting
+        bf16=True, # EXPERIMENTAL: Enable BF16 mixed precision (more stable than FP16)
         
         # Other improvements
         remove_unused_columns=False,
-        report_to='wandb' if accelerator.is_main_process else "none",
+        report_to='wandb',
         label_names=["labels"],
         
         # Weight decay for regularization
@@ -293,51 +286,82 @@ def main(args):
         load_best_model_at_end=False,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
+        
+        # CRITICAL: Tell Trainer to use GPU 
+        use_cpu=False,
+        
+        # Make training more stable
+        dataloader_drop_last=True,
+        
+        # IMPORTANT: Disable gradient checkpointing as it's causing issues with LoRA
+        gradient_checkpointing=False, # Disable gradient checkpointing to avoid gradient errors
+        torch_compile=False,  # Disable torch.compile to avoid memory spikes
     )
 
-    # Initialize trainer with enhanced metrics
+    # Create data collator - necessary for proper batching
+    data_collator = transformers.DataCollatorForSeq2Seq(
+        tokenizer=tokenizer,
+        padding=True,
+        return_tensors="pt",
+    )
+
+    # Manually move model to device
+    model = model.to(device)
+    print(f"Model moved to {device}")
+    
+    # Explicitly set use_cache to False for training 
+    # This ensures compatibility with both non-checkpoint and checkpoint versions
+    if hasattr(model.config, "use_cache"):
+        model.config.use_cache = False
+        print("Disabled model.config.use_cache for training stability (needed for gradient checkpointing)") # Updated print
+
+    # Double-check trainable parameters after moving to device
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"After device placement: {trainable_params:,} trainable parameters")
+
+    # Initialize trainer with the prepared model
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_tokens,
         eval_dataset=val_tokens,
         compute_metrics=compute_metrics,
-        tokenizer=tokenizer,  # Add tokenizer for better integration with accelerate
+        data_collator=data_collator,
     )
 
-    if accelerator.is_main_process:
-        print("Starting training with enhanced techniques...")
-    trainer.train()
-    if accelerator.is_main_process:
-        print("Training finished.")
+    print("Starting training with enhanced techniques...")
+    # Check for existing checkpoint and resume if found
+    last_checkpoint = get_last_checkpoint(cfg['training']['output_dir'])
+    if last_checkpoint:
+        print(f"Resuming training from checkpoint {last_checkpoint}")
+        trainer.train(resume_from_checkpoint=last_checkpoint)
+    else:
+        trainer.train()
+    print("Training finished.")
 
     # Final evaluation - only log on main process
-    if accelerator.is_main_process:
-        print("Starting final evaluation...")
+    print("Starting final evaluation...")
     eval_results = trainer.evaluate()
-    if accelerator.is_main_process:
-        print(f"Final evaluation results: {eval_results}")
-        # Log final eval metrics to W&B
-        if run:
-            wandb.log(eval_results)
+    print(f"Final evaluation results: {eval_results}")
+    if run:
+        wandb.log(eval_results)
 
     # Save final model - only on main process
-    if accelerator.is_main_process:
-        print("Saving final model...")
-        final_model_path = os.path.join(cfg['training']['output_dir'], "final_model")
-        trainer.save_model(final_model_path)
-        print(f"Model saved to {final_model_path}")
-        
-        # Save training configuration for reproducibility
-        config_path = os.path.join(cfg['training']['output_dir'], "train2_config.yaml")
-        with open(config_path, 'w') as f:
-            import yaml
-            yaml.dump(cfg, f)
-        print(f"Configuration saved to {config_path}")
+    print("Saving final model...")
+    final_model_path = os.path.join(cfg['training']['output_dir'], "final_model")
+    trainer.save_model(final_model_path)
+    print(f"Model saved to {final_model_path}")
+    
+    # Save training configuration for reproducibility
+    config_path = os.path.join(cfg['training']['output_dir'], "train2_config.yaml")
+    with open(config_path, 'w') as f:
+        import yaml
+        yaml.dump(cfg, f)
+    print(f"Configuration saved to {config_path}")
 
-        if run:
-            run.finish()
-            print("W&B run finished.")
+    if run:
+        run.finish()
+        print("W&B run finished.")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
